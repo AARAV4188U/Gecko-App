@@ -1,0 +1,56 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Named Firestore database provisioned for Gekko (use (default) if deploying to a default database)
+    function userDomain() {
+      return firestore.get(/databases/ai-studio-72b0f3b0-ffe4-4ea3-a89c-e5ec53d7eacc/documents/users/$(request.auth.uid)).data.domain;
+    }
+
+    function chatMembers(chatId) {
+      return firestore.get(/databases/ai-studio-72b0f3b0-ffe4-4ea3-a89c-e5ec53d7eacc/documents/chats/$(chatId)).data.members;
+    }
+
+    function callDoc(callId) {
+      return firestore.get(/databases/ai-studio-72b0f3b0-ffe4-4ea3-a89c-e5ec53d7eacc/documents/active_calls/$(callId)).data;
+    }
+
+    match /stuff/personal/{uid}/{fileName} {
+      allow read, delete: if isSignedIn() && request.auth.uid == uid;
+      allow write: if isSignedIn() && request.auth.uid == uid
+        && request.resource != null
+        && request.resource.size <= 10 * 1024 * 1024;
+    }
+
+    match /stuff/domain/{domain}/{uid}/{fileName} {
+      allow read: if isSignedIn() && domain != 'None' && userDomain() == domain;
+      allow create, update: if isSignedIn() && domain != 'None' && userDomain() == domain
+        && request.auth.uid == uid
+        && request.resource != null
+        && request.resource.size <= 10 * 1024 * 1024;
+      allow delete: if isSignedIn() && request.auth.uid == uid && domain != 'None' && userDomain() == domain;
+    }
+
+    match /chats/{chatId}/{fileName} {
+      allow read: if isSignedIn() && request.auth.uid in chatMembers(chatId);
+      allow write: if isSignedIn()
+        && request.auth.uid in chatMembers(chatId)
+        && request.resource != null
+        && request.resource.size <= 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+      allow delete: if isSignedIn() && request.auth.uid in chatMembers(chatId);
+    }
+
+    match /calls/{callId}/{fileName} {
+      allow read, delete: if isSignedIn()
+        && (callDoc(callId).callerUid == request.auth.uid || callDoc(callId).receiverUid == request.auth.uid);
+      allow write: if isSignedIn()
+        && (callDoc(callId).callerUid == request.auth.uid || callDoc(callId).receiverUid == request.auth.uid)
+        && request.resource != null
+        && request.resource.size <= 2 * 1024 * 1024;
+    }
+  }
+}

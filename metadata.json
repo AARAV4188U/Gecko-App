@@ -1,0 +1,6 @@
+{
+  "name": "Gekko",
+  "description": "Gekko — collaborative team workspace with prompt builder, domain file vault, real-time chat & voice calls, Google Workspace suite, and Google Maps.",
+  "requestFramePermissions": ["microphone", "camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,228 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidUser(data, uid) {
+      return data.keys().hasAll(['uid', 'firstName', 'lastName', 'age', 'gender', 'username', 'email', 'emailType', 'domain', 'createdAt'])
+        && data.keys().hasOnly(['uid', 'firstName', 'lastName', 'age', 'gender', 'username', 'email', 'emailType', 'domain', 'createdAt'])
+        && data.uid == uid
+        && data.firstName is string && data.firstName.size() >= 1 && data.firstName.size() <= 80
+        && data.lastName is string && data.lastName.size() >= 1 && data.lastName.size() <= 80
+        && data.age is int && data.age >= 1 && data.age <= 150
+        && data.gender is string && data.gender.size() >= 1 && data.gender.size() <= 40
+        && data.username is string && data.username.size() >= 3 && data.username.size() <= 20 && data.username.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 254
+        && data.emailType in ['school', 'private']
+        && data.domain is string && data.domain.size() >= 1 && data.domain.size() <= 80
+        && data.createdAt is int && data.createdAt > 0;
+    }
+
+    function isValidChat(data) {
+      return data.keys().hasAll(['type', 'name', 'admin', 'members', 'memberUsernames', 'createdAt'])
+        && data.keys().hasOnly(['type', 'name', 'admin', 'members', 'memberUsernames', 'createdAt'])
+        && data.type in ['dm', 'group']
+        && data.name is string && data.name.size() <= 100
+        && data.admin is string && data.admin.size() >= 1 && data.admin.size() <= 128
+        && data.members is list && data.members.size() >= 1 && data.members.size() <= 100 && data.members[0] is string
+        && data.memberUsernames is map && data.memberUsernames.size() <= 100
+        && data.createdAt is int && data.createdAt > 0;
+    }
+
+    function isValidCall(data) {
+      return data.keys().hasAll(['callerUid', 'callerUsername', 'receiverUid', 'receiverUsername', 'status', 'callerChunks', 'receiverChunks', 'createdAt'])
+        && data.keys().hasOnly(['callerUid', 'callerUsername', 'receiverUid', 'receiverUsername', 'status', 'callerChunks', 'receiverChunks', 'createdAt'])
+        && data.callerUid is string && data.callerUid.size() >= 1 && data.callerUid.size() <= 128
+        && data.callerUsername is string && data.callerUsername.size() >= 1 && data.callerUsername.size() <= 20
+        && data.receiverUid is string && data.receiverUid.size() >= 1 && data.receiverUid.size() <= 128
+        && data.receiverUsername is string && data.receiverUsername.size() >= 1 && data.receiverUsername.size() <= 20
+        && data.status in ['ringing', 'active', 'ended']
+        && data.callerChunks is list && data.callerChunks.size() <= 1000
+        && data.receiverChunks is list && data.receiverChunks.size() <= 1000
+        && data.createdAt is int && data.createdAt > 0;
+    }
+
+    match /users/{uid} {
+      allow get: if isSignedIn() && isValidId(uid);
+      allow list: if false;
+      allow create: if isSignedIn() && isValidId(uid) && request.auth.uid == uid && isValidUser(incoming(), uid);
+      allow update: if isSignedIn() && isValidId(uid) && request.auth.uid == uid
+        && isValidUser(incoming(), uid)
+        && incoming().uid == existing().uid
+        && incoming().username == existing().username
+        && incoming().email == existing().email
+        && incoming().createdAt == existing().createdAt
+        && incoming().diff(existing()).affectedKeys().hasOnly(['firstName', 'lastName', 'age', 'gender', 'emailType', 'domain']);
+      allow delete: if isSignedIn() && isValidId(uid) && request.auth.uid == uid;
+
+      match /chatState/{chatId} {
+        allow get, list: if isSignedIn() && request.auth.uid == uid;
+        allow create, update: if isSignedIn() && isValidId(chatId) && request.auth.uid == uid
+          && incoming().keys().hasAll(['lastReadAt'])
+          && incoming().keys().hasOnly(['lastReadAt'])
+          && incoming().lastReadAt is int && incoming().lastReadAt >= 0;
+        allow delete: if isSignedIn() && isValidId(chatId) && request.auth.uid == uid;
+      }
+
+      match /notes/{noteId} {
+        allow get, list: if isSignedIn() && request.auth.uid == uid;
+        allow create, update: if isSignedIn() && isValidId(noteId) && request.auth.uid == uid
+          && incoming().keys().hasAll(['title', 'body', 'pinned', 'createdAt', 'updatedAt'])
+          && incoming().keys().hasOnly(['title', 'body', 'pinned', 'createdAt', 'updatedAt'])
+          && incoming().title is string && incoming().title.size() <= 200
+          && incoming().body is string && incoming().body.size() <= 8000
+          && incoming().pinned is bool
+          && incoming().createdAt is int && incoming().updatedAt is int;
+        allow delete: if isSignedIn() && isValidId(noteId) && request.auth.uid == uid;
+      }
+    }
+
+    match /usernames/{usernameLower} {
+      allow get: if isValidId(usernameLower);
+      allow list: if false;
+      allow create: if isSignedIn() && isValidId(usernameLower)
+        && usernameLower.size() >= 3 && usernameLower.size() <= 20
+        && !exists(/databases/$(database)/documents/usernames/$(usernameLower))
+        && incoming().keys().hasAll(['uid', 'email', 'username', 'createdAt'])
+        && incoming().keys().hasOnly(['uid', 'email', 'username', 'createdAt'])
+        && incoming().uid == request.auth.uid
+        && incoming().email is string && incoming().email.size() >= 3 && incoming().email.size() <= 254
+        && incoming().username is string && incoming().username.lower() == usernameLower
+        && incoming().createdAt is int && incoming().createdAt > 0;
+      allow update: if false;
+      allow delete: if isSignedIn() && isValidId(usernameLower) && existing().uid == request.auth.uid;
+    }
+
+    match /domains/{domainId} {
+      allow get, list: if true;
+      allow write: if false;
+    }
+
+    match /build_prompts/{promptId} {
+      allow get: if isSignedIn() && isValidId(promptId) && existing().uid == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.uid == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(promptId)
+        && incoming().keys().hasAll(['uid', 'username', 'prompt', 'response', 'createdAt'])
+        && incoming().keys().hasOnly(['uid', 'username', 'prompt', 'response', 'createdAt'])
+        && incoming().uid == request.auth.uid
+        && incoming().username is string && incoming().username.size() >= 1 && incoming().username.size() <= 20
+        && incoming().prompt is string && incoming().prompt.size() >= 1 && incoming().prompt.size() <= 8000
+        && incoming().response == ''
+        && incoming().createdAt is int && incoming().createdAt > 0;
+      allow update, delete: if false;
+    }
+
+    match /files/{fileId} {
+      function sameDomain(data) {
+        return data.scope == 'domain'
+          && data.domain != 'None'
+          && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.domain == data.domain;
+      }
+
+      allow get: if isSignedIn() && isValidId(fileId)
+        && (existing().ownerUid == request.auth.uid || sameDomain(existing()));
+      allow list: if isSignedIn()
+        && (resource.data.ownerUid == request.auth.uid || sameDomain(resource.data));
+      allow create: if isSignedIn() && isValidId(fileId)
+        && incoming().keys().hasAll(['name', 'size', 'contentType', 'scope', 'domain', 'ownerUid', 'ownerUsername', 'storagePath', 'downloadUrl', 'createdAt'])
+        && incoming().keys().hasOnly(['name', 'size', 'contentType', 'scope', 'domain', 'ownerUid', 'ownerUsername', 'storagePath', 'downloadUrl', 'createdAt'])
+        && incoming().ownerUid == request.auth.uid
+        && incoming().size is int && incoming().size > 0 && incoming().size <= 10485760
+        && incoming().scope in ['personal', 'domain']
+        && incoming().name is string && incoming().name.size() >= 1 && incoming().name.size() <= 255
+        && incoming().contentType is string && incoming().contentType.size() <= 128
+        && incoming().domain is string && incoming().domain.size() >= 1 && incoming().domain.size() <= 80
+        && incoming().ownerUsername is string && incoming().ownerUsername.size() >= 1 && incoming().ownerUsername.size() <= 20
+        && incoming().storagePath is string && incoming().storagePath.size() >= 1 && incoming().storagePath.size() <= 512
+        && incoming().downloadUrl is string && incoming().downloadUrl.size() >= 8 && incoming().downloadUrl.size() <= 2048
+        && incoming().createdAt is int && incoming().createdAt > 0
+        && (incoming().scope == 'personal' || sameDomain(incoming()));
+      allow update: if false;
+      allow delete: if isSignedIn() && isValidId(fileId) && existing().ownerUid == request.auth.uid;
+    }
+
+    match /chats/{chatId} {
+      allow get: if isSignedIn() && isValidId(chatId)
+        && (resource == null || request.auth.uid in existing().members);
+      allow list: if isSignedIn() && request.auth.uid in resource.data.members;
+      allow create: if isSignedIn() && isValidId(chatId)
+        && isValidChat(incoming())
+        && incoming().admin == request.auth.uid
+        && request.auth.uid in incoming().members;
+      allow update: if isSignedIn() && isValidId(chatId)
+        && existing().admin == request.auth.uid
+        && isValidChat(incoming())
+        && incoming().admin == existing().admin
+        && incoming().type == existing().type
+        && incoming().createdAt == existing().createdAt
+        && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'members', 'memberUsernames']);
+      allow delete: if isSignedIn() && isValidId(chatId) && existing().admin == request.auth.uid;
+
+      match /messages/{messageId} {
+        function isMember() {
+          return isSignedIn() && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.members;
+        }
+
+        allow get: if isValidId(chatId) && isValidId(messageId) && isMember();
+        allow list: if isValidId(chatId) && isMember();
+        allow create: if isValidId(chatId) && isValidId(messageId) && isMember()
+          && incoming().keys().hasAll(['senderUid', 'senderUsername', 'text', 'createdAt'])
+          && incoming().keys().hasOnly(['senderUid', 'senderUsername', 'text', 'imageUrl', 'imagePath', 'imageExpired', 'createdAt'])
+          && incoming().senderUid == request.auth.uid
+          && incoming().senderUsername is string && incoming().senderUsername.size() >= 1 && incoming().senderUsername.size() <= 20
+          && incoming().text is string && incoming().text.size() <= 4000
+          && incoming().createdAt is int && incoming().createdAt > 0
+          && (!('imageUrl' in incoming()) || incoming().imageUrl == null || (incoming().imageUrl is string && incoming().imageUrl.size() <= 2048))
+          && (!('imagePath' in incoming()) || incoming().imagePath == null || (incoming().imagePath is string && incoming().imagePath.size() <= 512));
+        allow update: if isValidId(chatId) && isValidId(messageId) && isMember()
+          && incoming().diff(existing()).affectedKeys().hasOnly(['imageUrl', 'imagePath', 'imageExpired'])
+          && incoming().imageUrl == null
+          && incoming().imagePath == null
+          && incoming().imageExpired == true
+          && (request.time.toMillis() - existing().createdAt > 864000000);
+        allow delete: if isValidId(chatId) && isValidId(messageId) && isSignedIn()
+          && get(/databases/$(database)/documents/chats/$(chatId)).data.admin == request.auth.uid;
+      }
+    }
+
+    match /active_calls/{callId} {
+      allow get: if isSignedIn() && isValidId(callId)
+        && (existing().callerUid == request.auth.uid || existing().receiverUid == request.auth.uid);
+      allow list: if isSignedIn()
+        && (resource.data.callerUid == request.auth.uid || resource.data.receiverUid == request.auth.uid);
+      allow create: if isSignedIn() && isValidId(callId)
+        && isValidCall(incoming())
+        && incoming().callerUid == request.auth.uid
+        && incoming().status == 'ringing';
+      allow update: if isSignedIn() && isValidId(callId)
+        && (existing().callerUid == request.auth.uid || existing().receiverUid == request.auth.uid)
+        && isValidCall(incoming())
+        && incoming().callerUid == existing().callerUid
+        && incoming().receiverUid == existing().receiverUid
+        && incoming().callerUsername == existing().callerUsername
+        && incoming().receiverUsername == existing().receiverUsername
+        && incoming().createdAt == existing().createdAt
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'callerChunks', 'receiverChunks']);
+      allow delete: if isSignedIn() && isValidId(callId)
+        && (existing().callerUid == request.auth.uid || existing().receiverUid == request.auth.uid);
+    }
+  }
+}

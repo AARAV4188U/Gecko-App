@@ -1,0 +1,184 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Registered Gekko user profile.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "firstName": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "lastName": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "age": { "type": "integer" },
+        "gender": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "username": { "type": "string", "minLength": 3, "maxLength": 20, "pattern": "^[a-zA-Z0-9_-]{3,20}$" },
+        "email": { "type": "string", "format": "email", "maxLength": 254 },
+        "emailType": { "type": "string", "enum": ["school", "private"] },
+        "domain": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["uid", "firstName", "lastName", "age", "gender", "username", "email", "emailType", "domain", "createdAt"]
+    },
+    "UsernameLookup": {
+      "title": "UsernameLookup",
+      "description": "Case-insensitive unique username reservation mapping lowercase username to uid and email.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "email": { "type": "string", "format": "email", "maxLength": 254 },
+        "username": { "type": "string", "minLength": 3, "maxLength": 20 },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["uid", "email", "username", "createdAt"]
+    },
+    "Domain": {
+      "title": "Domain",
+      "description": "Organization domain with SHA-256 passHash for gated registration.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "passHash": { "type": "string", "minLength": 64, "maxLength": 64 }
+      },
+      "required": ["name", "passHash"]
+    },
+    "BuildPrompt": {
+      "title": "BuildPrompt",
+      "description": "Permanent user prompt log answered asynchronously by admin in Firebase console.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "username": { "type": "string", "minLength": 3, "maxLength": 20 },
+        "prompt": { "type": "string", "minLength": 1, "maxLength": 8000 },
+        "response": { "type": "string", "maxLength": 32000 },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["uid", "username", "prompt", "response", "createdAt"]
+    },
+    "FileRecord": {
+      "title": "FileRecord",
+      "description": "Metadata for personal or domain-shared file stored in Firebase Storage (max 10 MB).",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 255 },
+        "size": { "type": "integer" },
+        "contentType": { "type": "string", "maxLength": 128 },
+        "scope": { "type": "string", "enum": ["personal", "domain"] },
+        "domain": { "type": "string", "maxLength": 80 },
+        "ownerUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "ownerUsername": { "type": "string", "minLength": 1, "maxLength": 20 },
+        "storagePath": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "downloadUrl": { "type": "string", "minLength": 8, "maxLength": 2048 },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["name", "size", "scope", "domain", "ownerUid", "ownerUsername", "storagePath", "downloadUrl", "createdAt"]
+    },
+    "Chat": {
+      "title": "Chat",
+      "description": "1-on-1 or group chat metadata. Only admin can update or delete.",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["dm", "group"] },
+        "name": { "type": "string", "maxLength": 100 },
+        "admin": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "members": { "type": "array" },
+        "memberUsernames": { "type": "object" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["type", "admin", "members", "createdAt"]
+    },
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "Message inside a chat with optional compressed image expiring after 10 days.",
+      "type": "object",
+      "properties": {
+        "senderUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "senderUsername": { "type": "string", "minLength": 1, "maxLength": 20 },
+        "text": { "type": "string", "maxLength": 4000 },
+        "imageUrl": { "type": "string", "maxLength": 2048 },
+        "imagePath": { "type": "string", "maxLength": 512 },
+        "imageExpired": { "type": "boolean" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["senderUid", "senderUsername", "text", "createdAt"]
+    },
+    "ChatReadState": {
+      "title": "ChatReadState",
+      "description": "Per-user unread tracking timestamp for a chat.",
+      "type": "object",
+      "properties": {
+        "lastReadAt": { "type": "number" }
+      },
+      "required": ["lastReadAt"]
+    },
+    "ActiveCall": {
+      "title": "ActiveCall",
+      "description": "1-on-1 clip-based voice call signaling and audio chunk queue.",
+      "type": "object",
+      "properties": {
+        "callerUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "callerUsername": { "type": "string", "minLength": 1, "maxLength": 20 },
+        "receiverUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "receiverUsername": { "type": "string", "minLength": 1, "maxLength": 20 },
+        "status": { "type": "string", "enum": ["ringing", "active", "ended"] },
+        "callerChunks": { "type": "array" },
+        "receiverChunks": { "type": "array" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["callerUid", "callerUsername", "receiverUid", "receiverUsername", "status", "callerChunks", "receiverChunks", "createdAt"]
+    },
+    "WorkspaceNote": {
+      "title": "WorkspaceNote",
+      "description": "Keep-compatible personal workspace note synced to Firestore.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "maxLength": 200 },
+        "body": { "type": "string", "maxLength": 8000 },
+        "pinned": { "type": "boolean" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["title", "body", "pinned", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Registered user profiles; authenticated read, owner-only write."
+    },
+    "/users/{uid}/chatState/{chatId}": {
+      "schema": { "$ref": "#/entities/ChatReadState" },
+      "description": "Owner-only unread message tracking per chat."
+    },
+    "/users/{uid}/notes/{noteId}": {
+      "schema": { "$ref": "#/entities/WorkspaceNote" },
+      "description": "Owner-only Keep-compatible workspace notes."
+    },
+    "/usernames/{usernameLower}": {
+      "schema": { "$ref": "#/entities/UsernameLookup" },
+      "description": "Public get-only lookup mapping lowercase username to uid and email."
+    },
+    "/domains/{domainId}": {
+      "schema": { "$ref": "#/entities/Domain" },
+      "description": "Publicly readable domain list with SHA-256 passHash."
+    },
+    "/build_prompts/{promptId}": {
+      "schema": { "$ref": "#/entities/BuildPrompt" },
+      "description": "Author-only create and read build prompt logs."
+    },
+    "/files/{fileId}": {
+      "schema": { "$ref": "#/entities/FileRecord" },
+      "description": "Personal or domain-shared file records."
+    },
+    "/chats/{chatId}": {
+      "schema": { "$ref": "#/entities/Chat" },
+      "description": "Members-only chat rooms; admin-only update and delete."
+    },
+    "/chats/{chatId}/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/ChatMessage" },
+      "description": "Chat messages guarded by parent chat membership via get()."
+    },
+    "/active_calls/{callId}": {
+      "schema": { "$ref": "#/entities/ActiveCall" },
+      "description": "Caller and receiver only signaling and audio clip URLs."
+    }
+  }
+}
